@@ -1,0 +1,17 @@
+fastapi==0.110.3
+uvicorn==0.34.0
+sqlalchemy==2.0.30
+alembic==1.13.1
+pymysql==1.1.1
+cryptography==42.0.8
+pydantic==2.7.1
+pydantic-settings==2.2.1
+python-dotenv==1.0.1
+web3==5.31.4
+httpx==0.27.0
+google-generativeai==0.5.4
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.9
+apscheduler==3.10.4
+pytest==8.2.0

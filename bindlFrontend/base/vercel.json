@@ -1,0 +1,12 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "next build",
+  "devCommand": "next dev",
+  "installCommand": "npm install",
+  "env": {
+    "NEXT_PUBLIC_API_URL": "@api_url",
+    "NEXT_PUBLIC_ESCROW_ADDRESS": "@escrow_address",
+    "NEXT_PUBLIC_ONCHAINKIT_API_KEY": "@onchainkit_api_key",
+    "NEXT_PUBLIC_WC_PROJECT_ID": "@wc_project_id"
+  }
+}
