@@ -18,11 +18,20 @@ def get_reputation(wallet_address: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.wallet_address == wallet_lower).first()
     if not user:
         return {
-            "wallet_address": wallet_lower,
-            "score": 0.0, "total_contracts": 0, "completed_contracts": 0,
-            "disputes_raised": 0, "disputes_won": 0, "disputes_lost": 0,
-            "ghosting_incidents": 0, "avg_response_hours": None,
-            "signal_tags": ["New account"], "is_new": True,
+            "wallet_address":      wallet_lower,
+            "score":               0.0,
+            "total_contracts":     0,
+            "completed_contracts": 0,
+            "disputes_raised":     0,
+            "disputes_won":        0,
+            "disputes_lost":       0,
+            "ghosting_incidents":  0,
+            "avg_response_hours":  None,
+            "usdc_earned":         0.0,
+            "usdc_spent":          0.0,
+            "usdc_balance":        0.0,
+            "signal_tags":         ["New account"],
+            "is_new":              True,
         }
 
     rep  = user.reputation
@@ -38,6 +47,9 @@ def get_reputation(wallet_address: str, db: Session = Depends(get_db)):
         "disputes_lost":       rep.disputes_lost,
         "ghosting_incidents":  rep.ghosting_incidents,
         "avg_response_hours":  rep.avg_response_hours,
+        "usdc_earned":         round(rep.usdc_earned  or 0.0, 4),
+        "usdc_spent":          round(rep.usdc_spent   or 0.0, 4),
+        "usdc_balance":        round(rep.usdc_balance or 0.0, 4),
         "signal_tags":         tags,
         "is_new":              rep.total_contracts == 0,
     }

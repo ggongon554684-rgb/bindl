@@ -104,9 +104,11 @@ class Contract(Base):
     # ✅ NEW: Track work submission and approval
     work_submitted_at = Column(DateTime, nullable=True)
     work_submitted_by = Column(String(36), ForeignKey("users.id"), nullable=True)
+    work_notes        = Column(Text, nullable=True)  # Notes from work submission
     work_approved_at  = Column(DateTime, nullable=True)
     work_approved_by  = Column(String(36), ForeignKey("users.id"), nullable=True)
     final_submitted_at = Column(DateTime, nullable=True)
+    final_delivery_notes = Column(Text, nullable=True)  # Notes from final delivery submission
 
     title               = Column(String(255), nullable=False)
     description         = Column(Text, nullable=False)
@@ -230,6 +232,45 @@ class Reputation(Base):
     disputes_lost       = Column(Integer, default=0)
     ghosting_incidents  = Column(Integer, default=0)
     avg_response_hours  = Column(Float, nullable=True)
+
+    # ✅ USDC tracking
+    usdc_earned  = Column(Float, default=0.0)   # Party B only — paid out on release
+    usdc_spent   = Column(Float, default=0.0)   # Party A only — deducted on lock
+    usdc_balance = Column(Float, default=0.0)   # Available to withdraw
+
     updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User", back_populates="reputation")
+
+
+class WithdrawalStatus(str, enum.Enum):
+    PENDING    = "pending"
+    PROCESSING = "processing"
+    COMPLETED  = "completed"
+    FAILED     = "failed"
+
+
+class WithdrawalChannel(str, enum.Enum):
+    GCASH  = "gcash"
+    PAYPAL = "paypal"
+
+
+class Withdrawal(Base):
+    __tablename__ = "withdrawals"
+
+    id               = Column(String(36), primary_key=True, default=new_uuid)
+    user_id          = Column(String(36), ForeignKey("users.id"), nullable=False)
+    amount_usdc      = Column(Float, nullable=False)
+    amount_php       = Column(Float, nullable=True)
+    exchange_rate    = Column(Float, nullable=True)
+    fee_usdc         = Column(Float, default=0.0)
+    channel          = Column(SAEnum(WithdrawalChannel), nullable=False)
+    recipient_handle = Column(String(255), nullable=False)  # phone or email
+    status           = Column(SAEnum(WithdrawalStatus), default=WithdrawalStatus.PENDING)
+    external_id      = Column(String(255), nullable=True)   # Xendit disbursement ID
+    failure_reason   = Column(Text, nullable=True)
+    created_at       = Column(DateTime, default=datetime.utcnow)
+    updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at     = Column(DateTime, nullable=True)
+
+    user = relationship("User", foreign_keys=[user_id])

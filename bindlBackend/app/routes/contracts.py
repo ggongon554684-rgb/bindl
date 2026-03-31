@@ -88,7 +88,7 @@ class ReleaseIn(BaseModel):
 # ✅ NEW: Work submission and approval schemas
 class SubmitWorkIn(BaseModel):
     wallet: str  # Which party is submitting (usually party_b)
-    notes: Optional[str] = None  # Work submission notes/links
+    notes: str = ""  # Work submission notes/links
 
 
 class ApproveWorkIn(BaseModel):
@@ -131,47 +131,51 @@ def get_or_create_user(
     
     # ✅ MERGE CASE: Both exist as separate records — keep wallet record, merge email record into it
     if user_by_wallet and user_by_email and user_by_wallet.id != user_by_email.id:
-        # Copy email to wallet record (wallet is canonical)
-        user_by_wallet.email = email_lower
-        if display_name and not user_by_wallet.display_name:
-            user_by_wallet.display_name = display_name
-        
-        # Reassign all contracts from email record to wallet record
-        db.query(Contract).filter(Contract.party_a_id == user_by_email.id).update(
-            {Contract.party_a_id: user_by_wallet.id}
-        )
-        db.query(Contract).filter(Contract.party_b_id == user_by_email.id).update(
-            {Contract.party_b_id: user_by_wallet.id}
-        )
-        
-        # Reassign audit logs
-        db.query(AuditLog).filter(AuditLog.user_id == user_by_email.id).update(
-            {AuditLog.user_id: user_by_wallet.id}
-        )
-        
-        # Merge reputation: combine stats from email record into wallet record
-        email_rep = db.query(Reputation).filter(Reputation.user_id == user_by_email.id).first()
-        wallet_rep = db.query(Reputation).filter(Reputation.user_id == user_by_wallet.id).first()
-        
-        if email_rep:
-            if wallet_rep:
-                # Merge stats
-                wallet_rep.total_contracts += email_rep.total_contracts
-                wallet_rep.completed_contracts += email_rep.completed_contracts
-                wallet_rep.disputes_lost += email_rep.disputes_lost
-                wallet_rep.ghosting_incidents += email_rep.ghosting_incidents
-                wallet_rep.score = recalculate_score(wallet_rep)
-            else:
-                # Move reputation to wallet record
-                email_rep.user_id = user_by_wallet.id
+        try:
+            # Copy email to wallet record (wallet is canonical)
+            user_by_wallet.email = email_lower
+            if display_name and not user_by_wallet.display_name:
+                user_by_wallet.display_name = display_name
             
-            # Delete email-only user record (cascade will clean up orphaned reputation if needed)
-            db.delete(user_by_email)
-        else:
-            # Just delete the email record
-            db.delete(user_by_email)
-        
-        db.flush()
+            # Reassign all contracts from email record to wallet record
+            db.query(Contract).filter(Contract.party_a_id == user_by_email.id).update(
+                {Contract.party_a_id: user_by_wallet.id}
+            )
+            db.query(Contract).filter(Contract.party_b_id == user_by_email.id).update(
+                {Contract.party_b_id: user_by_wallet.id}
+            )
+            
+            # Reassign audit logs
+            db.query(AuditLog).filter(AuditLog.user_id == user_by_email.id).update(
+                {AuditLog.user_id: user_by_wallet.id}
+            )
+            
+            # Merge reputation: combine stats from email record into wallet record
+            email_rep = db.query(Reputation).filter(Reputation.user_id == user_by_email.id).first()
+            wallet_rep = db.query(Reputation).filter(Reputation.user_id == user_by_wallet.id).first()
+            
+            if email_rep:
+                if wallet_rep:
+                    # Merge stats
+                    wallet_rep.total_contracts += email_rep.total_contracts
+                    wallet_rep.completed_contracts += email_rep.completed_contracts
+                    wallet_rep.disputes_lost += email_rep.disputes_lost
+                    wallet_rep.ghosting_incidents += email_rep.ghosting_incidents
+                    wallet_rep.score = recalculate_score(wallet_rep)
+                else:
+                    # Move reputation to wallet record
+                    email_rep.user_id = user_by_wallet.id
+                
+                # Delete email-only user record (cascade will clean up orphaned reputation if needed)
+                db.delete(user_by_email)
+            else:
+                # Just delete the email record
+                db.delete(user_by_email)
+            
+            db.flush()
+        except Exception:
+            db.rollback()
+            raise
         return user_by_wallet
     
     # ✅ WALLET ONLY: Exists by wallet, try to add email
@@ -446,27 +450,9 @@ def get_contract(link_token: str, request: Request, db: Session = Depends(get_db
     party_a = db.query(User).filter(User.id == contract.party_a_id).first()
     party_b = db.query(User).filter(User.id == contract.party_b_id).first() if contract.party_b_id else None
 
-    # ✅ Extract work_notes from audit log (where event = WORK_SUBMITTED)
-    work_notes = None
-    if contract.work_submitted_at:
-        submission_log = db.query(AuditLog).filter(
-            AuditLog.contract_id == contract.id,
-            AuditLog.event == AuditEvent.WORK_SUBMITTED,
-        ).first()
-        if submission_log and submission_log.extra_data:
-            extra = json.loads(submission_log.extra_data)
-            work_notes = extra.get("notes")
-    
-    # ✅ Extract final_notes from audit log (where event = FINAL_SUBMITTED)
-    final_notes = None
-    if contract.final_submitted_at:
-        final_log = db.query(AuditLog).filter(
-            AuditLog.contract_id == contract.id,
-            AuditLog.event == AuditEvent.FINAL_SUBMITTED,
-        ).first()
-        if final_log and final_log.extra_data:
-            extra = json.loads(final_log.extra_data)
-            final_notes = extra.get("notes")
+    # ✅ Get notes directly from contract model (saved on submission)
+    work_notes = contract.work_notes
+    final_notes = contract.final_delivery_notes
 
     return {
         "contract_id":         make_contract_id(str(contract.id)),
@@ -552,7 +538,7 @@ def party_b_agree(
         "agreed": True, 
         "status": STATUS_MAP.get(get_enum_value(contract.status), get_enum_value(contract.status)),
         "terms_hash": contract.terms_hash, 
-        "next": "proceed_to_payment" if contract.status == ContractStatus.DRAFT else "work_submission",
+        "next": "lock_funds" if contract.status == ContractStatus.ONGOING else "waiting_for_party_a",
         "party_b_id": str(party_b.id),
     }
 
@@ -589,6 +575,7 @@ def submit_work(
     # ✅ Mark work as submitted
     contract.work_submitted_at = datetime.utcnow()
     contract.work_submitted_by = party_b.id
+    contract.work_notes = data.notes or None  # ✅ Save notes directly to model
     
     ip_address = request.client.host if request.client else None
     write_audit(db, contract.id, party_b.id, AuditEvent.WORK_SUBMITTED,
@@ -694,6 +681,7 @@ def submit_final_delivery(
     
     # ✅ Mark final delivery as submitted
     contract.final_submitted_at = datetime.utcnow()
+    contract.final_delivery_notes = data.notes or None  # ✅ Save notes directly to model
     
     ip_address = request.client.host if request.client else None
     write_audit(db, contract.id, party_b.id, AuditEvent.FINAL_SUBMITTED,
@@ -736,6 +724,17 @@ def confirm_lock(link_token: str, data: LockFundsIn, db: Session = Depends(get_d
         rep = db.query(Reputation).filter(Reputation.user_id == uid).first()
         if rep:
             rep.total_contracts += 1
+        else:
+            # ✅ Create Reputation record if missing
+            rep = Reputation(user_id=uid)
+            db.add(rep)
+            db.flush()
+
+    # ✅ BUG FIX: Track Party A's USDC spending when they lock funds.
+    # Party A is paying, so their usdc_spent increases.
+    party_a_rep = db.query(Reputation).filter(Reputation.user_id == contract.party_a_id).first()
+    if party_a_rep:
+        party_a_rep.usdc_spent = (party_a_rep.usdc_spent or 0.0) + contract.amount_usdc
 
     db.commit()
 
@@ -792,11 +791,34 @@ async def release_contract(link_token: str, data: ReleaseIn, db: Session = Depen
     write_audit(db, contract.id, contract.party_a_id, AuditEvent.RELEASED, {"tx_hash": tx_hash})
 
     if contract.status == ContractStatus.RELEASED:
-        for uid in [contract.party_a_id, contract.party_b_id]:
-            rep = db.query(Reputation).filter(Reputation.user_id == uid).first()
-            if rep:
-                rep.completed_contracts += 1
-                rep.score = recalculate_score(rep)
+        # ✅ BUG FIX: Only Party B (the freelancer who completed the work) gets
+        # completed_contracts and usdc_earned updated. Party A is the client —
+        # they requested the work, so we track their usdc_spent instead.
+
+        party_b_rep = db.query(Reputation).filter(Reputation.user_id == contract.party_b_id).first()
+        if not party_b_rep:
+            # ✅ Create missing Reputation record
+            party_b_rep = Reputation(user_id=contract.party_b_id)
+            db.add(party_b_rep)
+            db.flush()
+        if party_b_rep:
+            party_b_rep.completed_contracts += 1
+            party_b_rep.usdc_earned = (party_b_rep.usdc_earned or 0.0) + contract.amount_usdc
+            party_b_rep.usdc_balance = (party_b_rep.usdc_balance or 0.0) + contract.amount_usdc
+            party_b_rep.score = recalculate_score(party_b_rep)
+
+        party_a_rep = db.query(Reputation).filter(Reputation.user_id == contract.party_a_id).first()
+        if not party_a_rep:
+            # ✅ Create missing Reputation record
+            party_a_rep = Reputation(user_id=contract.party_a_id)
+            db.add(party_a_rep)
+            db.flush()
+        if party_a_rep:
+            # Party A doesn't earn — their USDC was already deducted at lock time.
+            # Recalculate score only (total_contracts was already incremented at lock).
+            # Note: For clients (Party A), score will reflect 0 completion rate since they don't
+            # complete contracts as a freelancer would. This is expected behavior.
+            party_a_rep.score = recalculate_score(party_a_rep)
 
     db.commit()
 

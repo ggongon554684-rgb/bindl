@@ -23,10 +23,12 @@ export function Navbar() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
         setDropdownOpen(false);
       }
     }
@@ -37,16 +39,18 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-gray-950/80 backdrop-blur-md">
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 font-semibold text-white">
+        <Link
+          href="/"
+          className="flex shrink-0 items-center gap-2 font-semibold text-white"
+        >
           <span className="flex h-7 w-7 items-center justify-center rounded-md bg-green-500 text-sm font-bold text-gray-950">
             Bi
           </span>
           <span className="text-sm tracking-tight">Bindl</span>
         </Link>
 
-        {/* Nav links — only show when logged in */}
+        {/* Nav links */}
         {session && (
           <div className="hidden items-center gap-6 sm:flex">
             <Link
@@ -69,25 +73,27 @@ export function Navbar() {
         )}
 
         {/* Right side */}
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-3">
           {session ? (
             <>
-              {/* Wallet connect */}
-              <Wallet>
-                <ConnectWallet className="rounded-lg bg-green-500 px-4 py-2 text-sm font-medium text-gray-950 transition-colors hover:bg-green-400">
-                  <Avatar className="h-6 w-6" />
-                  <Name />
-                </ConnectWallet>
-                <WalletDropdown>
-                  <Identity className="px-4 pt-3 pb-2" hasCopyAddressOnClick>
-                    <Avatar />
+              {/* Wallet — force inline so it doesn't break the flex row */}
+              <div className="flex items-center [&>div]:flex [&>div]:items-center">
+                <Wallet>
+                  <ConnectWallet className="flex items-center gap-1.5 rounded-lg bg-green-500 px-3 py-1.5 text-sm font-medium text-gray-950 transition-colors hover:bg-green-400">
+                    <Avatar className="h-5 w-5 shrink-0" />
                     <Name />
-                    <Address />
-                    <EthBalance />
-                  </Identity>
-                  <WalletDropdownDisconnect />
-                </WalletDropdown>
-              </Wallet>
+                  </ConnectWallet>
+                  <WalletDropdown>
+                    <Identity className="px-4 pt-3 pb-2" hasCopyAddressOnClick>
+                      <Avatar />
+                      <Name />
+                      <Address />
+                      <EthBalance />
+                    </Identity>
+                    <WalletDropdownDisconnect />
+                  </WalletDropdown>
+                </Wallet>
+              </div>
 
               {/* User avatar dropdown */}
               <div className="relative" ref={dropdownRef}>
@@ -109,14 +115,20 @@ export function Navbar() {
                   <span className="hidden text-xs sm:block">
                     {session.user?.name?.split(" ")[0]}
                   </span>
-                  <i className={`bi ${dropdownOpen ? "bi-chevron-up" : "bi-chevron-down"} text-xs text-gray-500`} />
+                  <i
+                    className={`bi ${dropdownOpen ? "bi-chevron-up" : "bi-chevron-down"} text-xs text-gray-500`}
+                  />
                 </button>
 
                 {dropdownOpen && (
                   <div className="absolute right-0 mt-2 w-48 rounded-xl border border-white/10 bg-gray-900 p-1 shadow-xl">
                     <div className="border-b border-white/5 px-3 py-2">
-                      <p className="text-xs font-medium text-white">{session.user?.name}</p>
-                      <p className="text-xs text-gray-500">{session.user?.email}</p>
+                      <p className="text-xs font-medium text-white">
+                        {session.user?.name}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {session.user?.email}
+                      </p>
                     </div>
                     <Link
                       href="/dashboard"
@@ -155,7 +167,6 @@ export function Navbar() {
             </Link>
           )}
         </div>
-
       </nav>
     </header>
   );

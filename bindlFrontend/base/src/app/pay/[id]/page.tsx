@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, use } from "react";
 import { useAccount, useReadContract, useConnect } from "wagmi";
 import { useSession } from "next-auth/react";
 import { injected } from "wagmi/connectors";
@@ -616,15 +616,29 @@ function ApproveWorkPanel({
         request revisions.
       </p>
       {contract.work_submitted_at && (
-        <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3 flex flex-col gap-1">
-          <p className="text-xs text-gray-500">Submitted by Party B</p>
-          <p className="text-xs text-gray-400">
-            {new Date(contract.work_submitted_at).toLocaleString()}
+        <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
+          <p className="text-xs font-semibold uppercase tracking-widest text-blue-400 mb-2">
+            <i className="bi bi-eye mr-1" />
+            Work Submission
           </p>
-          {contract.work_notes && (
-            <p className="text-sm text-white mt-1 break-all">
-              {contract.work_notes}
-            </p>
+          <p className="text-xs text-gray-400 mb-3">
+            Submitted {new Date(contract.work_submitted_at).toLocaleString()}
+          </p>
+          {contract.work_notes ? (
+            <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+              <p className="text-xs text-gray-500 mb-1">
+                <i className="bi bi-file-text mr-1" />
+                Submission Content:
+              </p>
+              <p className="text-sm text-white break-words whitespace-pre-wrap">
+                {contract.work_notes}
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white/5 rounded-lg p-3 border border-white/10 text-sm text-gray-400">
+              <i className="bi bi-info-circle mr-1" />
+              No notes provided with submission.
+            </div>
           )}
         </div>
       )}
@@ -741,8 +755,15 @@ function FinalDeliveryPanel({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function PayPage({ params }: { params: { id: string } }) {
-  const { data: session, status } = useSession();
+export default function PayPage({
+  params: paramsPromise,
+}: {
+  params: Promise<{ id: string }> | { id: string };
+}) {
+  // Handle both Promise and direct param object for version compatibility
+  const params = "then" in paramsPromise ? use(paramsPromise) : paramsPromise;
+  const { id } = params;
+  const { data: session, status: sessionStatus } = useSession();
   const { isConnected, address } = useAccount();
   const [contract, setContract] = useState<Contract | null>(null);
   const [loading, setLoading] = useState(true);
@@ -753,11 +774,26 @@ export default function PayPage({ params }: { params: { id: string } }) {
   const termsRef = useRef<HTMLDivElement>(null);
   const scrollUnlocked = useScrollGate(termsRef);
 
+  const refreshContract = async () => {
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/contracts/${id}`,
+      );
+      if (!res.ok) throw new Error();
+      setContract(await res.json());
+      setError(null);
+    } catch {
+      setError(
+        "Could not load contract. Make sure your wallet is connected and try again.",
+      );
+    }
+  };
+
   useEffect(() => {
     async function fetchContract() {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/contracts/${params.id}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/contracts/${id}`,
         );
         if (!res.ok) throw new Error();
         setContract(await res.json());
@@ -772,22 +808,20 @@ export default function PayPage({ params }: { params: { id: string } }) {
       }
     }
     fetchContract();
-  }, [params.id]);
+  }, [id]);
 
   const handleAgree = async () => {
-    const token = contract?.link_token ?? params.id;
+    if (!address) {
+      setError("Please connect your wallet before accepting this contract.");
+      return;
+    }
+    const token = contract?.link_token ?? id;
     try {
       await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/contracts/${token}/agree?wallet=${address}`,
         { method: "POST" },
       );
-      // Refresh contract to get updated party_b_agreed_at
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/contracts/${params.id}`,
-      );
-      if (res.ok) {
-        setContract(await res.json());
-      }
+      await refreshContract();
     } catch (err) {
       setError("Could not accept contract. Please retry.");
       return;
@@ -961,7 +995,7 @@ export default function PayPage({ params }: { params: { id: string } }) {
                 Review & accept contract
               </h3>
             </div>
-            {status === "loading" ? (
+            {sessionStatus === "loading" ? (
               <div className="flex items-center justify-center py-8">
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-green-500 border-t-transparent" />
               </div>
@@ -990,7 +1024,7 @@ export default function PayPage({ params }: { params: { id: string } }) {
               agreed={agreed}
             />
           </div>
-        ) : statusUpper === "ONGOING" && !isPartyA ? (
+        ) : statusUpper === "ONGOING" && isPartyB ? (
           <div>
             {contract.final_submitted_at ? (
               <div className="flex flex-col items-center gap-3 text-center">
@@ -1013,7 +1047,7 @@ export default function PayPage({ params }: { params: { id: string } }) {
                 <FinalDeliveryPanel
                   contract={contract}
                   walletAddress={address}
-                  onSubmitSuccess={() => window.location.reload()}
+                  onSubmitSuccess={() => refreshContract()}
                 />
               </>
             ) : contract.work_submitted_at ? (
@@ -1037,7 +1071,7 @@ export default function PayPage({ params }: { params: { id: string } }) {
                 <SubmitWorkPanel
                   contract={contract}
                   walletAddress={address}
-                  onSubmitSuccess={() => window.location.reload()}
+                  onSubmitSuccess={() => refreshContract()}
                 />
               </>
             )}
@@ -1046,17 +1080,29 @@ export default function PayPage({ params }: { params: { id: string } }) {
           isPartyA &&
           contract.final_submitted_at ? (
           <div className="flex flex-col gap-3">
-            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-              <p className="text-xs text-gray-500 mb-1">
-                Final delivery received
+            <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-green-400 mb-2">
+                <i className="bi bi-inbox mr-1" />
+                Final Delivery Received
               </p>
-              <p className="text-xs text-gray-400">
+              <p className="text-sm text-gray-300 mb-3">
                 Party B has submitted their final deliverable.
               </p>
-              {contract.final_notes && (
-                <p className="text-sm text-white mt-2 break-all">
-                  {contract.final_notes}
-                </p>
+              {contract.final_notes && contract.final_notes.trim() ? (
+                <div className="bg-white/5 rounded-lg p-3 border border-white/10 mb-3">
+                  <p className="text-xs text-gray-500 mb-1">
+                    <i className="bi bi-file-text mr-1" />
+                    Submission Content:
+                  </p>
+                  <p className="text-sm text-white break-words whitespace-pre-wrap">
+                    {contract.final_notes}
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white/5 rounded-lg p-3 border border-white/10 mb-3 text-sm text-gray-400">
+                  <i className="bi bi-info-circle mr-1" />
+                  No notes provided with final delivery.
+                </div>
               )}
             </div>
             <button
@@ -1070,7 +1116,7 @@ export default function PayPage({ params }: { params: { id: string } }) {
                       body: JSON.stringify({}),
                     },
                   );
-                  if (res.ok) window.location.reload();
+                  if (res.ok) await refreshContract();
                 } catch (err) {
                   console.error("Release error:", err);
                 }
@@ -1103,7 +1149,7 @@ export default function PayPage({ params }: { params: { id: string } }) {
                 </div>
                 <ApproveWorkPanel
                   contract={contract}
-                  onApprovalComplete={() => window.location.reload()}
+                  onApprovalComplete={() => refreshContract()}
                 />
               </>
             ) : (
@@ -1117,6 +1163,20 @@ export default function PayPage({ params }: { params: { id: string } }) {
                 </p>
               </div>
             )}
+          </div>
+        ) : statusUpper === "ONGOING" &&
+          isPartyB &&
+          contract.work_submitted_at &&
+          !contract.work_approved_at ? (
+          /* ✅ Party B sees waiting state while work is under review */
+          <div className="flex flex-col items-center gap-3 text-center">
+            <i className="bi bi-hourglass text-3xl text-blue-400" />
+            <p className="text-sm font-semibold text-white">
+              Work submitted — waiting for review
+            </p>
+            <p className="text-xs text-gray-400">
+              Party A is reviewing your submission.
+            </p>
           </div>
         ) : statusUpper === "LOCKED" ||
           statusUpper === "ACTIVE" ||

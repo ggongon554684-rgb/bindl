@@ -10,6 +10,7 @@ import Link from "next/link";
 
 import { ContractStatusBadge } from "@/components/ContractStatusBadge";
 import { PageHeader } from "@/components/PageHeader";
+import EarningsCard from "@/components/EarningsCard";
 import {
   API_CONTRACT_STATUSES,
   getContractTypeIcon,
@@ -17,15 +18,12 @@ import {
   type ApiContractStatus,
 } from "@/lib/contractUi";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 interface Contract {
   contract_id: string;
   type: string;
   title: string;
   amount?: string;
   amount_usdc: string;
-  /** Backend STATUS_MAP label: CREATED | ONGOING | ACTIVE | … */
   status: string;
   deadline: string;
   party_a: string;
@@ -35,12 +33,8 @@ interface Contract {
   link_token: string;
 }
 
-// ─── Config ───────────────────────────────────────────────────────────────────
-
 const USDC_ADDRESS = (process.env.NEXT_PUBLIC_MOCK_USDC_ADDRESS ??
   "0x16B81079aC2d1d6DB44946CA736D408028235E70") as `0x${string}`;
-
-// ─── Subcomponents ────────────────────────────────────────────────────────────
 
 function ContractCard({
   contract,
@@ -140,8 +134,6 @@ function BalanceCard({ address }: { address: string }) {
   );
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────────
-
 export default function DashboardPage() {
   const { status: sessionStatus } = useSession();
   const router = useRouter();
@@ -150,12 +142,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | ApiContractStatus>("all");
   const [error, setError] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
 
-  // Fix Issue 2 — wait for session before doing anything
   useEffect(() => {
-    if (sessionStatus === "unauthenticated") {
-      router.replace("/login");
-    }
+    if (sessionStatus === "unauthenticated") router.replace("/login");
   }, [sessionStatus, router]);
 
   useEffect(() => {
@@ -183,9 +173,8 @@ export default function DashboardPage() {
       }
     }
     fetchContracts();
-  }, [address]);
+  }, [address, refreshTick]);
 
-  // Show spinner while session is loading
   if (sessionStatus === "loading") {
     return (
       <div className="flex items-center justify-center py-32">
@@ -214,13 +203,6 @@ export default function DashboardPage() {
     );
   }
 
-  const totalLocked = contracts
-  .filter((c) => ["ACTIVE", "LOCKED"].includes(c.status?.toUpperCase() ?? ""))
-    .reduce((s, c) => s + parseFloat(c.amount_usdc ?? c.amount ?? "0"), 0);
-  const totalEarned = contracts
-    .filter((c) => c.status?.toUpperCase() === "COMPLETE")
-    .reduce((s, c) => s + parseFloat(c.amount_usdc ?? c.amount ?? "0"), 0);
-
   const stats = [
     {
       label: "Created / ongoing",
@@ -232,7 +214,9 @@ export default function DashboardPage() {
     },
     {
       label: "Active (locked)",
-      value: contracts.filter((c) => c.status?.toUpperCase() === "ACTIVE").length,
+      value: contracts.filter((c) =>
+        ["ACTIVE", "LOCKED"].includes(c.status?.toUpperCase() ?? ""),
+      ).length,
       icon: "bi-lock-fill",
       color: "text-blue-400",
     },
@@ -272,12 +256,20 @@ export default function DashboardPage() {
           ) : undefined
         }
         action={
-          <Link
-            href="/create"
-            className="inline-flex items-center gap-2 rounded-xl bg-green-500 px-4 py-2 text-sm font-semibold text-gray-950 transition hover:bg-green-400"
-          >
-            <i className="bi bi-plus-lg" /> New contract
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setRefreshTick((t) => t + 1)}
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-500 px-4 py-2 text-sm font-semibold text-gray-950 transition hover:bg-blue-400"
+            >
+              <i className="bi bi-arrow-clockwise" /> Refresh
+            </button>
+            <Link
+              href="/create"
+              className="inline-flex items-center gap-2 rounded-xl bg-green-500 px-4 py-2 text-sm font-semibold text-gray-950 transition hover:bg-green-400"
+            >
+              <i className="bi bi-plus-lg" /> New contract
+            </Link>
+          </div>
         }
       />
 
@@ -286,28 +278,9 @@ export default function DashboardPage() {
         <BalanceCard address={address ?? ""} />
       </div>
 
-      {/* USDC summary */}
-      <div className="mb-6 grid grid-cols-2 gap-3">
-        <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
-          <div className="flex items-center gap-1.5">
-            <i className="bi bi-lock-fill text-xs text-blue-400" />
-            <p className="text-xs text-gray-500">Total locked</p>
-          </div>
-          <p className="mt-1 text-2xl font-bold text-blue-400">
-            {totalLocked.toFixed(2)}{" "}
-            <span className="text-sm font-normal text-gray-500">USDC</span>
-          </p>
-        </div>
-        <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-4">
-          <div className="flex items-center gap-1.5">
-            <i className="bi bi-graph-up-arrow text-xs text-green-400" />
-            <p className="text-xs text-gray-500">Total earned</p>
-          </div>
-          <p className="mt-1 text-2xl font-bold text-green-400">
-            {totalEarned.toFixed(2)}{" "}
-            <span className="text-sm font-normal text-gray-500">USDC</span>
-          </p>
-        </div>
+      {/* USDC Overview — simplified: just remaining balance from API */}
+      <div className="mb-6">
+        <EarningsCard wallet={address ?? ""} refreshTrigger={refreshTick} />
       </div>
 
       {/* Stats grid */}
@@ -365,7 +338,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Contract list */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-green-500 border-t-transparent" />

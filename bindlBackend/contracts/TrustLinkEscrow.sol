@@ -115,9 +115,9 @@ contract TrustLinkEscrow {
         e.status = EscrowStatus.RELEASED;
         uint256 fee    = (e.amount * feeBps) / 10000;
         uint256 payout = e.amount - fee;
-        SafeERC20.safeTransfer(usdc, e.partyA, payout);
+        SafeERC20.safeTransfer(usdc, e.partyB, payout);
         if (fee > 0) SafeERC20.safeTransfer(usdc, feeRecipient, fee);
-        emit FundsReleased(escrowId, e.partyA, payout);
+        emit FundsReleased(escrowId, e.partyB, payout);
     }
 
     function releaseMilestone(uint256 escrowId, uint256 milestoneIndex)
@@ -130,7 +130,7 @@ contract TrustLinkEscrow {
         e.milestones[milestoneIndex].released = true;
         uint256 amount = e.milestones[milestoneIndex].amount;
         uint256 fee    = (amount * feeBps) / 10000;
-        SafeERC20.safeTransfer(usdc, e.partyA, amount - fee);
+        SafeERC20.safeTransfer(usdc, e.partyB, amount - fee);
         if (fee > 0) SafeERC20.safeTransfer(usdc, feeRecipient, fee);
         bool allDone = true;
         for (uint i = 0; i < e.milestones.length; i++)

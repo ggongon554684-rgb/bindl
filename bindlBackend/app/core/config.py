@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     MAIL_SERVER: str = "smtp.gmail.com"
     MAIL_PORT: int = 587
 
+    # Xendit settings for USDC withdrawal
+    XENDIT_SECRET_KEY:    str   = ""     # from dashboard.xendit.co → API Keys
+    WITHDRAWAL_FEE_PCT:   float = 1.0   # % fee charged on each withdrawal
+
     class Config:
         env_file = ".env"
         extra = "ignore"

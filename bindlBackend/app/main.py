@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import get_settings
 from app.core.database import engine, Base
-from app.routes import contracts, users, ai, disputes, amendments, health
+from app.routes import contracts, users, ai, disputes, amendments, health, withdrawals
 from app.services.ghost_protection import start_scheduler
 from app.middleware import RateLimitMiddleware
 
@@ -45,3 +45,4 @@ app.include_router(contracts.router,  prefix="/contracts",  tags=["contracts"])
 app.include_router(disputes.router,   prefix="/disputes",   tags=["disputes"])
 app.include_router(amendments.router, prefix="/amendments", tags=["amendments"])
 app.include_router(ai.router,         prefix="/ai",         tags=["ai"])
+app.include_router(withdrawals.router, prefix="/withdrawals", tags=["withdrawals"])

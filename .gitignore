@@ -25,7 +25,9 @@ artifacts/
 *.db
 *.sqlite
 
-# OS
+# OScd bindlFrontend/base
+Remove-Item -Recurse -Force .git
+cd ../..
 .DS_Store
 Thumbs.db
 

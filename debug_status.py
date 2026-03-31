@@ -50,3 +50,4 @@ print(f"GET response status: {get_response2.status_code}")
 print(f"Contract status field: '{contract2.get('status')}'")
 print(f"Full response:")
 print(json.dumps(contract2, indent=2, default=str))
+    
