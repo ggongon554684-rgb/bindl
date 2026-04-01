@@ -18,6 +18,7 @@ def get_reputation(wallet_address: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.wallet_address == wallet_lower).first()
     if not user:
         return {
+            "address":             wallet_lower,   # ✅ alias frontend expects
             "wallet_address":      wallet_lower,
             "score":               0.0,
             "total_contracts":     0,
@@ -35,8 +36,30 @@ def get_reputation(wallet_address: str, db: Session = Depends(get_db)):
         }
 
     rep  = user.reputation
+    # ✅ FIX: Guard against missing Reputation row — possible if record was created
+    # outside the normal flow (e.g. direct DB insert, migration gap, merge edge case).
+    if rep is None:
+        return {
+            "address":             user.wallet_address,   # ✅ alias frontend expects
+            "wallet_address":      user.wallet_address,
+            "display_name":        user.display_name,
+            "score":               0.0,
+            "total_contracts":     0,
+            "completed_contracts": 0,
+            "disputes_raised":     0,
+            "disputes_won":        0,
+            "disputes_lost":       0,
+            "ghosting_incidents":  0,
+            "avg_response_hours":  None,
+            "usdc_earned":         0.0,
+            "usdc_spent":          0.0,
+            "usdc_balance":        0.0,
+            "signal_tags":         ["New account"],
+            "is_new":              True,
+        }
     tags = _build_tags(rep)
     return {
+        "address":             user.wallet_address,   # ✅ alias frontend expects
         "wallet_address":      user.wallet_address,
         "display_name":        user.display_name,
         "score":               rep.score,

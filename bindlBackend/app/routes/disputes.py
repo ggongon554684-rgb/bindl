@@ -11,6 +11,8 @@ from app.models.models import (
 )
 from app.services.audit import write_audit
 from app.validators import validate_ethereum_address
+# ✅ FIX: Import score calculator so disputes affect reputation score
+from app.routes.contracts import recalculate_score
 
 router = APIRouter()
 
@@ -58,6 +60,8 @@ def raise_dispute(data: DisputeCreate, request: Request = None, db: Session = De
     rep = db.query(Reputation).filter(Reputation.user_id == user.id).first()
     if rep:
         rep.disputes_raised += 1
+        # ✅ FIX: Recalculate score so disputes_raised actually affects reputation
+        rep.score = recalculate_score(rep)
 
     write_audit(db, contract.id, user.id, AuditEvent.DISPUTED, {"reason": data.reason.value})
     db.commit()

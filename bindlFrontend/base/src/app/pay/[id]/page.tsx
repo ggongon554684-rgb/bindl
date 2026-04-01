@@ -85,6 +85,7 @@ const ESCROW_ABI = [
 interface Contract {
   contract_id: string;
   link_token: string;
+  escrow_id?: string | null;
   type: string;
   title: string;
   description: string;
@@ -406,62 +407,320 @@ function LockFundsPanel({
   );
 }
 
-function ActionPanel({
+// ─── Dispute modal ────────────────────────────────────────────────────────────
+
+const DISPUTE_REASONS = [
+  {
+    value: "bad_match",
+    label: "Bad match",
+    description: "The deliverables don't match what was agreed.",
+  },
+  {
+    value: "quality",
+    label: "Quality issue",
+    description: "The work quality doesn't meet the acceptance criteria.",
+  },
+  {
+    value: "no_delivery",
+    label: "No delivery",
+    description: "Work was never submitted or delivered.",
+  },
+  {
+    value: "lost_transit",
+    label: "Lost in transit",
+    description: "Physical goods were lost during delivery.",
+  },
+  {
+    value: "other",
+    label: "Other",
+    description: "Another reason not listed above.",
+  },
+] as const;
+
+type DisputeReason = (typeof DISPUTE_REASONS)[number]["value"];
+
+function DisputeModal({
   contract,
-  onReleaseSuccess,
+  walletAddress,
+  onClose,
+  onSuccess,
 }: {
   contract: Contract;
-  onReleaseSuccess: (tx: string) => void;
+  walletAddress: string | undefined;
+  onClose: () => void;
+  onSuccess: () => void;
 }) {
-  const releaseCall = [
-    {
-      address: ESCROW_ADDRESS,
-      abi: ESCROW_ABI,
-      functionName: "releaseFunds" as const,
-      args: [BigInt(contract.link_token)],
-    },
-  ];
-  const disputeCall = [
-    {
-      address: ESCROW_ADDRESS,
-      abi: ESCROW_ABI,
-      functionName: "raiseDispute" as const,
-      args: [BigInt(contract.link_token), "Work not satisfactory"],
-    },
-  ];
+  const [reason, setReason] = useState<DisputeReason>("bad_match");
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [nextStep, setNextStep] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!walletAddress) {
+      setError("Please connect your wallet first.");
+      return;
+    }
+    if (description.trim().length < 20) {
+      setError("Please provide a description of at least 20 characters.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/disputes/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contract_link_token: contract.link_token,
+          raised_by_wallet: walletAddress,
+          reason,
+          description: description.trim(),
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setError(body?.detail ?? "Failed to raise dispute. Please try again.");
+        return;
+      }
+      setNextStep(body.next_step ?? "Your dispute has been filed.");
+    } catch {
+      setError("Network error. Please check your connection and retry.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Confirmation screen ────────────────────────────────────────────────────
+  if (nextStep) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-gray-950 p-6 shadow-2xl">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-500/10 border border-orange-500/30">
+              <i className="bi bi-shield-exclamation text-2xl text-orange-400" />
+            </div>
+            <h3 className="text-base font-semibold text-white">
+              Dispute Filed
+            </h3>
+            <p className="text-sm text-gray-400 leading-relaxed">{nextStep}</p>
+            <p className="text-xs text-gray-600">
+              Both parties will be notified. Keep all evidence available for
+              review.
+            </p>
+          </div>
+          <button
+            onClick={onSuccess}
+            className="mt-6 w-full rounded-xl bg-white/10 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Form ──────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col gap-3">
-      <Transaction
-        chainId={CHAIN_ID}
-        calls={releaseCall}
-        onSuccess={(res) =>
-          onReleaseSuccess(res.transactionReceipts?.[0]?.transactionHash ?? "")
-        }
-      >
-        <TransactionButton
-          className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-green-500 py-3 text-sm font-semibold text-gray-950 transition hover:bg-green-400"
-          text="Approve & Release Funds"
-        />
-        <TransactionStatus>
-          <TransactionStatusLabel />
-          <TransactionStatusAction />
-        </TransactionStatus>
-      </Transaction>
-      <Transaction
-        chainId={CHAIN_ID}
-        calls={disputeCall}
-        onSuccess={() => window.location.reload()}
-      >
-        <TransactionButton
-          className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 py-3 text-sm font-semibold text-red-400 transition hover:bg-red-500/20"
-          text="Raise Dispute"
-        />
-        <TransactionStatus>
-          <TransactionStatusLabel />
-          <TransactionStatusAction />
-        </TransactionStatus>
-      </Transaction>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-gray-950 p-6 shadow-2xl">
+        {/* Header */}
+        <div className="mb-5 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-white">
+              Raise a Dispute
+            </h3>
+            <p className="mt-0.5 text-xs text-gray-500">
+              A mediator will review your case within 24 hours.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="shrink-0 rounded-lg p-1 text-gray-500 transition hover:bg-white/10 hover:text-white"
+          >
+            <i className="bi bi-x-lg text-sm" />
+          </button>
+        </div>
+
+        {/* Reason selector */}
+        <div className="mb-4">
+          <label className="mb-2 block text-xs font-medium text-gray-400">
+            Reason for dispute
+          </label>
+          <div className="flex flex-col gap-2">
+            {DISPUTE_REASONS.map((r) => (
+              <button
+                key={r.value}
+                onClick={() => setReason(r.value)}
+                className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${
+                  reason === r.value
+                    ? "border-orange-500/40 bg-orange-500/10"
+                    : "border-white/10 bg-white/5 hover:border-white/20"
+                }`}
+              >
+                <div
+                  className={`mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 flex items-center justify-center ${
+                    reason === r.value ? "border-orange-400" : "border-gray-600"
+                  }`}
+                >
+                  {reason === r.value && (
+                    <div className="h-2 w-2 rounded-full bg-orange-400" />
+                  )}
+                </div>
+                <div>
+                  <p
+                    className={`text-sm font-medium ${reason === r.value ? "text-white" : "text-gray-300"}`}
+                  >
+                    {r.label}
+                  </p>
+                  <p className="text-xs text-gray-500">{r.description}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Description */}
+        <div className="mb-4">
+          <label className="mb-2 block text-xs font-medium text-gray-400">
+            Describe the issue{" "}
+            <span className="text-gray-600">(min. 20 characters)</span>
+          </label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={4}
+            placeholder="Explain clearly what went wrong and what outcome you expect…"
+            className="w-full resize-none rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-gray-200 placeholder-gray-600 focus:border-orange-500/40 focus:outline-none focus:ring-1 focus:ring-orange-500/20"
+          />
+          <p className="mt-1 text-right text-xs text-gray-600">
+            {description.trim().length} / 20 min
+          </p>
+        </div>
+
+        {/* Warning notice */}
+        <div className="mb-4 flex gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+          <i className="bi bi-info-circle shrink-0 text-amber-400 text-sm mt-0.5" />
+          <p className="text-xs text-amber-300/80 leading-relaxed">
+            Raising a dispute pauses the contract. Both parties will be notified
+            and should continue communicating to reach a resolution.
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            {error}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-white/10 py-3 text-sm font-medium text-gray-400 transition hover:bg-white/5"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || !description.trim()}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 py-3 text-sm font-semibold text-white transition hover:bg-orange-400 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {submitting ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            ) : (
+              <i className="bi bi-shield-exclamation" />
+            )}
+            {submitting ? "Filing…" : "File Dispute"}
+          </button>
+        </div>
+      </div>
     </div>
+  );
+}
+
+function ActionPanel({
+  contract,
+  walletAddress,
+  onReleaseSuccess,
+  onDisputeFiled,
+}: {
+  contract: Contract;
+  walletAddress: string | undefined;
+  onReleaseSuccess: (tx: string) => void;
+  onDisputeFiled: () => void;
+}) {
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
+
+  // ✅ FIX: link_token is a base64url string — BigInt() of it would throw a
+  // runtime SyntaxError. Use escrow_id (the numeric on-chain ID) instead.
+  const escrowIdBigInt = contract.escrow_id
+    ? BigInt(contract.escrow_id)
+    : undefined;
+
+  const releaseCall = escrowIdBigInt
+    ? [
+        {
+          address: ESCROW_ADDRESS,
+          abi: ESCROW_ABI,
+          functionName: "releaseFunds" as const,
+          args: [escrowIdBigInt],
+        },
+      ]
+    : [];
+
+  return (
+    <>
+      {showDisputeModal && (
+        <DisputeModal
+          contract={contract}
+          walletAddress={walletAddress}
+          onClose={() => setShowDisputeModal(false)}
+          onSuccess={() => {
+            setShowDisputeModal(false);
+            onDisputeFiled();
+          }}
+        />
+      )}
+      <div className="flex flex-col gap-3">
+        {escrowIdBigInt ? (
+          <Transaction
+            chainId={CHAIN_ID}
+            calls={releaseCall}
+            onSuccess={(res) =>
+              onReleaseSuccess(
+                res.transactionReceipts?.[0]?.transactionHash ?? "",
+              )
+            }
+          >
+            <TransactionButton
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-green-500 py-3 text-sm font-semibold text-gray-950 transition hover:bg-green-400"
+              text="Approve & Release Funds"
+            />
+            <TransactionStatus>
+              <TransactionStatusLabel />
+              <TransactionStatusAction />
+            </TransactionStatus>
+          </Transaction>
+        ) : (
+          <p className="rounded-xl border border-white/10 bg-white/5 p-3 text-center text-xs text-gray-500">
+            On-chain release unavailable — no escrow ID recorded.
+          </p>
+        )}
+
+        {/* ✅ FIX: Dispute now opens a professional modal that calls the backend,
+            captures reason + description, and shows proper next steps.
+            Previously it called raiseDispute on-chain with BigInt(link_token)
+            which would crash immediately since link_token is a base64url string. */}
+        <button
+          onClick={() => setShowDisputeModal(true)}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 py-3 text-sm font-semibold text-red-400 transition hover:bg-red-500/20"
+        >
+          <i className="bi bi-shield-exclamation" />
+          Raise Dispute
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -1190,7 +1449,9 @@ export default function PayPage({
             </div>
             <ActionPanel
               contract={contract}
+              walletAddress={address}
               onReleaseSuccess={(hash) => setTxHash(hash)}
+              onDisputeFiled={() => refreshContract()}
             />
           </div>
         ) : statusUpper === "RELEASED" || statusUpper === "COMPLETE" ? (

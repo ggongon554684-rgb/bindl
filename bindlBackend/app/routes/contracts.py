@@ -159,6 +159,9 @@ def get_or_create_user(
                     # Merge stats
                     wallet_rep.total_contracts += email_rep.total_contracts
                     wallet_rep.completed_contracts += email_rep.completed_contracts
+                    # ✅ FIX: disputes_raised and disputes_won were missing from merge
+                    wallet_rep.disputes_raised += email_rep.disputes_raised
+                    wallet_rep.disputes_won += email_rep.disputes_won
                     wallet_rep.disputes_lost += email_rep.disputes_lost
                     wallet_rep.ghosting_incidents += email_rep.ghosting_incidents
                     wallet_rep.score = recalculate_score(wallet_rep)
@@ -639,7 +642,7 @@ def approve_work(
         contract.work_submitted_by = None
         
         ip_address = request.client.host if request.client else None
-        write_audit(db, contract.id, party_a.id, AuditEvent.PARTY_AGREED,
+        write_audit(db, contract.id, party_a.id, AuditEvent.AMENDED,
                     {"action": "work_rejected", "message": "Party A rejected the submitted work"}, 
                     ip_address=ip_address)
         db.commit()
