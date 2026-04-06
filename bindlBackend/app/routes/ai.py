@@ -5,7 +5,6 @@ from typing import Optional
 from google import genai
 import json
 import logging
-from google.genai import errors
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.models import User, Reputation
