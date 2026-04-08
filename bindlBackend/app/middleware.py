@@ -24,6 +24,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.requests: Dict[Tuple[str, str], list] = defaultdict(list)  # {(ip, endpoint): [timestamp, ...]}
     
     async def dispatch(self, request: Request, call_next):
+        # --- FIX ADDED HERE ---
+        # Bypass rate limiting for CORS preflight requests from the browser
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        # ----------------------
+
         # Get client IP
         ip = request.client.host if request.client else "unknown"
         path = request.url.path

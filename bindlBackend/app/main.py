@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
@@ -20,21 +20,24 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="TrustLink API",
+    title="Bindl API",
     description="Trust infrastructure for peer-to-peer transactions",
     version="0.1.0",
     lifespan=lifespan,
 )
 
 app.add_middleware(RateLimitMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "http://localhost:3001", 
+        "http://localhost:3001",
         "http://127.0.0.1:3000",
+        "https://bindlfrontes.vercel.app", # Hardcoded fallback
         settings.FRONTEND_URL if settings.FRONTEND_URL else "http://localhost:3000",
     ],
+    allow_origin_regex=r"https://bindlfrontes.*\.vercel\.app", # Catches all Vercel previews
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
